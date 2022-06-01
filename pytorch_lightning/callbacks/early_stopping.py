@@ -62,6 +62,7 @@ class EarlyStopping(Callback):
         divergence_threshold: Stop training as soon as the monitored quantity becomes worse than this threshold.
         check_on_train_epoch_end: whether to run early stopping at the end of the training epoch.
             If this is ``False``, then the check runs at the end of the validation.
+        log_rank_zero_only: When set ``True``, logs the status of the early stopping callback only for rank 0 process.
 
     Raises:
         MisconfigurationException:
@@ -99,6 +100,7 @@ class EarlyStopping(Callback):
         stopping_threshold: Optional[float] = None,
         divergence_threshold: Optional[float] = None,
         check_on_train_epoch_end: Optional[bool] = None,
+        log_rank_zero_only: bool = False,
     ):
         super().__init__()
         self.monitor = monitor
@@ -113,6 +115,7 @@ class EarlyStopping(Callback):
         self.wait_count = 0
         self.stopped_epoch = 0
         self._check_on_train_epoch_end = check_on_train_epoch_end
+        self.log_rank_zero_only = log_rank_zero_only
 
         if self.mode not in self.mode_dict:
             raise MisconfigurationException(f"`mode` can be {', '.join(self.mode_dict.keys())}, got {self.mode}")
@@ -201,7 +204,7 @@ class EarlyStopping(Callback):
         if should_stop:
             self.stopped_epoch = trainer.current_epoch
         if reason and self.verbose:
-            self._log_info(trainer, reason)
+            self._log_info(trainer, reason, self.log_rank_zero_only)
 
     def _evaluate_stopping_criteria(self, current: torch.Tensor) -> Tuple[bool, Optional[str]]:
         should_stop = False
@@ -254,8 +257,8 @@ class EarlyStopping(Callback):
         return msg
 
     @staticmethod
-    def _log_info(trainer: Optional["pl.Trainer"], message: str) -> None:
-        if trainer is not None and trainer.world_size > 1:
+    def _log_info(trainer: Optional["pl.Trainer"], message: str, log_rank_zero_only: bool) -> None:
+        if not log_rank_zero_only and trainer is not None and trainer.world_size > 1:
             log.info(f"[rank: {trainer.global_rank}] {message}")
         else:
             log.info(message)
